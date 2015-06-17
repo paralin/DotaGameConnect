@@ -2,6 +2,7 @@
 using System;
 using System.Threading;
 using Dota2GameConnect.LobbyBot;
+using Dota2GameConnect.LobbyBot.Enums;
 using log4net;
 using log4net.Config;
 using SteamKit2;
@@ -24,12 +25,10 @@ namespace Dota2GameConnect
             string password = Console.ReadLine();
 #endif
 
-            bool keepRunning = true;
-
             Bot bot = new Bot(new SteamUser.LogOnDetails() {Username = username, Password = password});
             bot.Start();
 
-            while (keepRunning)
+            while (bot.State != State.SignedOff)
             {
                 Thread.Sleep(500);
             }

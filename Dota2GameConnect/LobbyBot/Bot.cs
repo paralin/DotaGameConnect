@@ -4,8 +4,10 @@
 using System;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Dota2;
 using Dota2.Engine;
+using Dota2.Engine.Session.State.Enums;
 using Dota2.GC.Dota.Internal;
 using Dota2.GC.Internal;
 using Dota2GameConnect.LobbyBot.Enums;
@@ -54,6 +56,11 @@ namespace Dota2GameConnect.LobbyBot
         /// </summary>
         public DotaGameClient GameClient { get; private set; }
 
+        /// <summary>
+        /// State of the bot
+        /// </summary>
+        public State State => _state.State;
+
         #endregion
         #region Private
 
@@ -65,6 +72,8 @@ namespace Dota2GameConnect.LobbyBot
         private bool _shouldReconnect = true;
         private int _cbThreadCtr = 0;
         private Thread _procThread;
+        private int _connAttempts = 0;
+        private const int maxAttempts = 3;
 
         #endregion
         #region Constructor
@@ -151,7 +160,16 @@ namespace Dota2GameConnect.LobbyBot
                 .Ignore(Trigger.DotaEnteredLobbyPlay)
                 .Permit(Trigger.DotaEnteredLobbyUI, State.DotaLobby)
                 .Permit(Trigger.DotaNoLobby, State.DotaMenu)
-                .OnEntry(StartDotaGameConnection)
+                .OnEntry(()=> _connAttempts = 0)
+                .OnEntry(() =>
+                {
+                    //Brief delay before starting connection
+                    Task.Run(() =>
+                    {
+                        Thread.Sleep(500);
+                        if(_state.State == State.DotaPlay) StartDotaGameConnection();
+                    });
+                })
                 .OnExit(ReleaseDotaGameConnection);
         }
         #endregion
@@ -230,6 +248,7 @@ namespace Dota2GameConnect.LobbyBot
 
             SetupSteamCallbacks(cb);
             SetupDotaGCCallbacks(cb);
+            SetupDotaClientCallbacks(cb);
 
             c.Connect();
             _cbThreadCtr++;
@@ -264,7 +283,6 @@ namespace Dota2GameConnect.LobbyBot
             DotaGCHandler = SteamClient.GetHandler<DotaGCHandler>();
             DotaGCHandler.Start();
             var cli = GameClient = new DotaGameClient(DotaGCHandler, _cbManager);
-            cli.OnLog += (sender, args) => log.Debug("[GameClient] " + args.Message);
         }
 
         /// <summary>
@@ -286,6 +304,8 @@ namespace Dota2GameConnect.LobbyBot
         /// </summary>
         private void StartDotaGameConnection()
         {
+            ReleaseDotaGameConnection();
+            _connAttempts++;
             GameClient.Connect();
         }
 
@@ -396,6 +416,36 @@ namespace Dota2GameConnect.LobbyBot
             cb.Add<DotaGCHandler.PracticeLobbyUpdate>(a => HandleLobbyUpdate(a.lobby));
         }
 
+        /// <summary>
+        /// Setup the DOTA client callbacks
+        /// </summary>
+        /// <param name="cb"></param>
+        private void SetupDotaClientCallbacks(CallbackManager cb)
+        {
+            cb.Add<DotaGameClient.HandshakeRejected>(rej =>
+            {
+                log.ErrorFormat("Connection to the game rejected with reason {0}. Attempts {1}/{2}.", rej.reason, _connAttempts, maxAttempts);
+            });
+            cb.Add<DotaGameClient.SessionStateTransition>(tra =>
+            {
+                log.Debug("[GameClient] "+tra.OldStatus.ToString("G")+" => "+tra.NewStatus.ToString("G"));
+
+                if (tra.NewStatus == States.PLAY)
+                {
+                    _connAttempts = 0;
+                }
+
+                if (tra.NewStatus != States.DISCONNECTED || _state.State != State.DotaPlay) return;
+                log.WarnFormat("Client has disconnected, attempts {0}/{1}.{2}", _connAttempts, maxAttempts, _connAttempts<maxAttempts ? " Retrying." : " Not retrying.");
+                if (_connAttempts < maxAttempts)
+                    StartDotaGameConnection();
+            });
+            cb.Add<DotaGameClient.LogMessage>(msg =>
+            {
+                log.Debug("[GameClient] "+msg.message);
+            });
+        }
+
         private void HandleLobbyUpdate(CSODOTALobby lobby)
         {
             if (Lobby == null && lobby != null)
@@ -421,6 +471,14 @@ namespace Dota2GameConnect.LobbyBot
                             m.team == DOTA_GC_TEAM.DOTA_GC_TEAM_BAD_GUYS ||
                             m.team == DOTA_GC_TEAM.DOTA_GC_TEAM_GOOD_GUYS) >= 2) 
                     DotaGCHandler.LaunchLobby();
+
+#if TEST_IMPL
+                if (lobby.game_state == DOTA_GameState.DOTA_GAMERULES_STATE_POST_GAME)
+                {
+                    log.Debug("Client has connected successfully and we've entered postgame.. Testing shutdown.");
+                    Stop();
+                }
+#endif
             }
 #endif
 
