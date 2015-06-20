@@ -30,7 +30,14 @@ namespace Dota2GameConnect
 
             while (bot.State != State.SignedOff)
             {
-                Thread.Sleep(500);
+                try
+                {
+                    Thread.Sleep(500);
+                }
+                catch (Exception ex)
+                {
+                    break;
+                }
             }
         }
     }

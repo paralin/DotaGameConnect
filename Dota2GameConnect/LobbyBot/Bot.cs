@@ -7,6 +7,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Dota2;
 using Dota2.Engine;
+using Dota2.Engine.Control;
+using Dota2.Engine.Game;
+using Dota2.Engine.Game.Data;
+using Dota2.Engine.Game.Entities.Dota;
 using Dota2.Engine.Session.State.Enums;
 using Dota2.GC.Dota.Internal;
 using Dota2.GC.Internal;
@@ -247,26 +251,6 @@ namespace Dota2GameConnect.LobbyBot
         {
             ReleaseSteamConnection();
 
-// see https://github.com/SteamRE/SteamKit/issues/120
-#if HAS_SERVERS_SETTER
-            try
-            {
-                if (File.Exists("steamservers.json"))
-                {
-                    string[] ips = JObject.Parse(File.ReadAllText("steamservers.json")).ToObject<string[]>();
-                    if (ips.Length > 1)
-                    {
-                        SteamClient.Servers =
-                            new ReadOnlyCollection<IPEndPoint>(ips.Select(IPEndpointEx.IPFromString).ToList());
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                log.Error("Issue parsing steamservers.json cache", ex);
-            }
-#endif
-
             var c = SteamClient = new SteamClient();
             DotaGCHandler.Bootstrap(c);
             SteamUser = c.GetHandler<SteamUser>();
@@ -311,6 +295,7 @@ namespace Dota2GameConnect.LobbyBot
             DotaGCHandler = SteamClient.GetHandler<DotaGCHandler>();
             DotaGCHandler.Start();
             var cli = GameClient = new DotaGameClient(DotaGCHandler, _cbManager);
+            cli.RegisterController(new BotGameController(this));
         }
 
         /// <summary>
@@ -421,17 +406,6 @@ namespace Dota2GameConnect.LobbyBot
                         break;
                 }
             });
-            /* Need to understand this before it's useful
-            cb.Add<SteamClient.ServerListCallback>(a => {
-#if SERVERS_VERBOSE
-                log.DebugFormat("Steam servers: {0}", JArray.FromObject(a.Servers.Keys).ToString());
-#else
-                log.DebugFormat("Received updated list of {0} STEAM servers.", a.Servers[EServerType.CM].Count);
-#endif
-                if(a.Servers.ContainsKey(EServerType.CM))
-                    File.WriteAllText("steamservers.json", JObject.FromObject(a.Servers[EServerType.CM].Select(m=>m.ToString())).ToString(Formatting.Indented));
-            });
-            */
         }
 
         /// <summary>
@@ -551,6 +525,64 @@ namespace Dota2GameConnect.LobbyBot
             _state.Fire(Trigger.ShutdownRequested);
         }
 
+#endregion
+#region Client Controller
+
+        /// <summary>
+        /// Controls a spectator bot
+        /// </summary>
+        private class BotGameController : IDotaGameController
+        {
+            private ILog log;
+
+            private ulong _steamId;
+            private DotaGameState _state;
+            private IDotaGameCommander _commander;
+            private Bot _bot;
+
+            private bool _hasSentHello = false;
+            private DOTA_GameState oldState = DOTA_GameState.DOTA_GAMERULES_STATE_INIT;
+
+            public BotGameController(Bot bot)
+            {
+                log = bot.log;
+                _bot = bot;
+            }
+
+            /// <summary>
+            /// Initialize the controller as the client begins to connect.
+            /// </summary>
+            /// <param name="id">Steam ID</param>
+            /// <param name="state">Emulated DOTA game client state</param>
+            /// <param name="commander">Command generator</param>
+            public void Initialize(ulong id, DotaGameState state, IDotaGameCommander commander)
+            {
+                _steamId = id;
+                _state = state;
+                _commander = commander;
+            }
+
+            /// <summary>
+            /// Called every tick. Must return near-instantly.
+            /// </summary>
+            public void Tick()
+            {
+                if (!_state.EntityPool.Has<GameRules>()) return;
+                var gr = _state.EntityPool.GetSingle<GameRules>();
+                var gs = gr.GameState.Value;
+                if (gs != oldState)
+                {
+                    log.DebugFormat("Game state {0} => {1}", oldState.ToString("G"), gs.ToString("G"));
+                    oldState = gr.GameState.Value;
+                }
+                if (gs >= DOTA_GameState.DOTA_GAMERULES_STATE_HERO_SELECTION && !_hasSentHello)
+                {
+                    _hasSentHello = true;
+                    _commander.Submit("say \"Welcome to DOTA.\"");
+                    log.DebugFormat("Sent message to all chat.");
+                }
+            }
+        }
 #endregion
     }
 }
