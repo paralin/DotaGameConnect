@@ -434,9 +434,15 @@ namespace Dota2GameConnect.LobbyBot
             });
             cb.Add<DotaGCHandler.ChatMessage>(
                 a =>
+                {
                     log.DebugFormat("[Chat][" +
                                     (a.result.channel_id == lobbyChannelId ? "Lobby" : a.result.channel_id + "") + "] " +
-                                    a.result.persona_name + ": " + a.result.text));
+                                    a.result.persona_name + ": " + a.result.text);
+                    if (a.result.channel_id == lobbyChannelId)
+                    {
+                        if(a.result.text.Contains("!start")) DotaGCHandler.LaunchLobby();
+                    }
+                });
         }
 
         /// <summary>
@@ -489,12 +495,14 @@ namespace Dota2GameConnect.LobbyBot
 #if TEST_IMPL
             if (lobby != null)
             {
+            /*
                 if (lobby.state == CSODOTALobby.State.UI &&
                     lobby.members.Count(
                         m =>
                             m.team == DOTA_GC_TEAM.DOTA_GC_TEAM_BAD_GUYS ||
-                            m.team == DOTA_GC_TEAM.DOTA_GC_TEAM_GOOD_GUYS) >= 1) 
+                            m.team == DOTA_GC_TEAM.DOTA_GC_TEAM_GOOD_GUYS) >= 2) 
                     DotaGCHandler.LaunchLobby();
+                    */
 
                 if (lobby.game_state == DOTA_GameState.DOTA_GAMERULES_STATE_POST_GAME)
                 {
@@ -562,6 +570,11 @@ namespace Dota2GameConnect.LobbyBot
                 _commander = commander;
             }
 
+            public void Say(string msg)
+            {
+                _commander.Submit("say \""+msg+"\"");
+            }
+
             /// <summary>
             /// Called every tick. Must return near-instantly.
             /// </summary>
@@ -572,15 +585,69 @@ namespace Dota2GameConnect.LobbyBot
                 var gs = gr.GameState.Value;
                 if (gs != oldState)
                 {
-                    log.DebugFormat("Game state {0} => {1}", oldState.ToString("G"), gs.ToString("G"));
+                    log.DebugFormat("State {0} => {1}", oldState.ToString("G"), gs.ToString("G"));
                     oldState = gr.GameState.Value;
                 }
                 if (gs >= DOTA_GameState.DOTA_GAMERULES_STATE_HERO_SELECTION && !_hasSentHello)
                 {
                     _hasSentHello = true;
-                    _commander.Submit("say \"Welcome to DOTA.\"");
+                    Say("Hello, welcome to DOTA!");
                     log.DebugFormat("Sent message to all chat.");
                 }
+                foreach (var msg in _state.ChatMessages)
+                {
+                    log.Debug("[ALLCHAT] " + msg.prefix + ": " + msg.text);
+                    if (msg.text.Contains("!pause"))
+                    {
+                        if (gr.PauseTeam.Value == GameRules.DOTA_ServerTeam.DIRE ||
+                            gr.PauseTeam.Value == GameRules.DOTA_ServerTeam.RADIANT)
+                        {
+                            Say("The game is already paused by " +
+                                (gr.PauseTeam.Value == GameRules.DOTA_ServerTeam.RADIANT ? "radiant." : "dire."));
+                        }
+                        else
+                        {
+                            Say("Pausing the game by request from " + msg.prefix + "!");
+                            _commander.Submit("dota_pause");
+                        }
+                    }else if (msg.text.Contains("!whoami"))
+                    {
+                        Say("You are "+msg.prefix+"!");
+                    }else if (msg.text.Contains("!time"))
+                    {
+                        Say("Current game time is "+gr.GameTime.Value+", game started at "+gr.GameStartTime.Value+".");
+                    }else if (msg.text.Contains("!timeofday"))
+                    {
+                        Say("Time of day is: "+gr.NetTimeOfDay.Value);
+                    }
+                }
+                _state.ChatMessages.Clear();
+                foreach (var msg in _state.ChatEvents)
+                {
+                    log.Debug("[CHATEVENT] " + msg.type.ToString("G") + ": " + msg.value);
+                    switch (msg.type)
+                    {
+                        case DOTA_CHAT_MESSAGE.CHAT_MESSAGE_FIRSTBLOOD:
+                            Say("Nice firstblood Kappa.");
+                            break;
+                        case DOTA_CHAT_MESSAGE.CHAT_MESSAGE_RECONNECT:
+                        case DOTA_CHAT_MESSAGE.CHAT_MESSAGE_CONNECT:
+                            Say("Welcome back "+msg.value+".");
+                            break;
+                        case DOTA_CHAT_MESSAGE.CHAT_MESSAGE_HERO_KILL:
+                            Say("Wow, that guy is totally feeding.");
+                            break;
+                        case DOTA_CHAT_MESSAGE.CHAT_MESSAGE_TOWER_KILL:
+                            Say("Boom! The tower went down.");
+                            break;
+                    }
+                }
+                _state.ChatEvents.Clear();
+                /*foreach (var msg in _state.GameEvents)
+                {
+                    log.Debug("[GAMEEVENT] "+msg.eventid);
+                }*/
+                _state.GameEvents.Clear();
             }
         }
 #endregion
