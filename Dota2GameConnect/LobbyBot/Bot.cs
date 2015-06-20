@@ -74,6 +74,7 @@ namespace Dota2GameConnect.LobbyBot
         private Thread _procThread;
         private int _connAttempts = 0;
         private const int maxAttempts = 3;
+        private ulong lobbyChannelId;
 
         #endregion
         #region Constructor
@@ -133,11 +134,9 @@ namespace Dota2GameConnect.LobbyBot
                 .Permit(Trigger.DotaEnteredLobbyUI, State.DotaLobby)
                 .Permit(Trigger.DotaEnteredLobbyPlay, State.DotaPlay)
                 .OnEntryFrom(Trigger.SteamConnected, StartDotaGCConnection);
-                //.OnExit(ReleaseDotaGCConnection);
 
             _state.Configure(State.DotaMenu)
                 .SubstateOf(State.Dota)
-                .OnEntryFrom(Trigger.DotaConnected, UpdatePersona)
                 .Permit(Trigger.DotaEnteredLobbyUI, State.DotaLobby)
                 .Permit(Trigger.DotaEnteredLobbyPlay, State.DotaPlay)
 #if TEST_IMPL
@@ -153,6 +152,8 @@ namespace Dota2GameConnect.LobbyBot
 #if TEST_IMPL
                 .OnEntry(JoinLobbySlot)
 #endif
+                .OnEntry(JoinLobbyChat)
+                .OnExit(LeaveLobbyChat)
                 ;
 
             _state.Configure(State.DotaPlay)
@@ -205,7 +206,34 @@ namespace Dota2GameConnect.LobbyBot
         /// </summary>
         private void JoinLobbySlot()
         {
-            DotaGCHandler.JoinTeam(DOTA_GC_TEAM.DOTA_GC_TEAM_GOOD_GUYS);
+            //DotaGCHandler.JoinTeam(DOTA_GC_TEAM.DOTA_GC_TEAM_GOOD_GUYS);
+            DotaGCHandler.JoinBroadcastChannel();
+        }
+
+        /// <summary>
+        /// Join the lobby chat channel
+        /// </summary>
+        private void JoinLobbyChat()
+        {
+            if (DotaGCHandler.Lobby == null)
+            {
+                log.Warn("JoinLobbyChat called with no lobby!");
+                return;
+            }
+
+            DotaGCHandler.JoinChatChannel("Lobby_"+DotaGCHandler.Lobby.lobby_id, DOTAChatChannelType_t.DOTAChannelType_Lobby);
+        }
+
+        /// <summary>
+        /// Leave a lobby chat channel
+        /// </summary>
+        private void LeaveLobbyChat()
+        {
+            if (lobbyChannelId != 0)
+            {
+                DotaGCHandler.LeaveChatChannel(lobbyChannelId);
+                lobbyChannelId = 0;
+            }
         }
 
         #endregion
@@ -319,8 +347,13 @@ namespace Dota2GameConnect.LobbyBot
 
         private void UpdatePersona()
         {
-            log.Debug("Changed persona name to wltest from "+SteamFriends.GetPersonaName());
-            SteamFriends.SetPersonaName("wltest");
+            var cname = SteamFriends.GetPersonaName();
+            var tname = "WebLeagueBot";
+            if (cname != tname)
+            {
+                log.DebugFormat("Changed persona name to {0} from {1}.", tname, cname);
+                SteamFriends.SetPersonaName(tname);
+            }
             SteamFriends.SetPersonaState(EPersonaState.Online);
         }
 
@@ -357,6 +390,11 @@ namespace Dota2GameConnect.LobbyBot
         private void SetupSteamCallbacks(CallbackManager cb)
         {
             // Handle general connection stuff
+            cb.Add<SteamUser.AccountInfoCallback>(a =>
+            {
+                log.DebugFormat("Current name is: {0}, flags {1}, ", a.PersonaName, a.AccountFlags.ToString("G"));
+                UpdatePersona();
+            });
             cb.Add<SteamClient.ConnectedCallback>(a => SteamUser.LogOn(_logonDetails));
             cb.Add<SteamClient.DisconnectedCallback>(a => _state.Fire(Trigger.SteamDisconnected));
             cb.Add<SteamUser.LoggedOnCallback>(a =>
@@ -414,6 +452,17 @@ namespace Dota2GameConnect.LobbyBot
             cb.Add<DotaGCHandler.PracticeLobbySnapshot>(a => HandleLobbyUpdate(a.lobby));
             cb.Add<DotaGCHandler.PracticeLobbyLeave>(a => HandleLobbyUpdate(null));
             cb.Add<DotaGCHandler.PracticeLobbyUpdate>(a => HandleLobbyUpdate(a.lobby));
+            cb.Add<DotaGCHandler.JoinChatChannelResponse>(a =>
+            {
+                if (DotaGCHandler.Lobby != null && a.result.channel_id != 0 &&
+                    a.result.channel_name == "Lobby_" + DotaGCHandler.Lobby.lobby_id)
+                    lobbyChannelId = a.result.channel_id;
+            });
+            cb.Add<DotaGCHandler.ChatMessage>(
+                a =>
+                    log.DebugFormat("[Chat][" +
+                                    (a.result.channel_id == lobbyChannelId ? "Lobby" : a.result.channel_id + "") + "] " +
+                                    a.result.persona_name + ": " + a.result.text));
         }
 
         /// <summary>
@@ -451,7 +500,8 @@ namespace Dota2GameConnect.LobbyBot
             if (Lobby == null && lobby != null)
             {
                 log.DebugFormat("Entered lobby {0} with state {1}.", lobby.lobby_id, lobby.state.ToString("G"));
-                if(lobby.pass_key != "wltest") DotaGCHandler.LeaveLobby();
+                if(lobby.pass_key != "wltest" || lobby.state >= CSODOTALobby.State.POSTGAME) DotaGCHandler.LeaveLobby();
+
             }else if (Lobby != null && lobby == null)
             {
                 log.DebugFormat("Exited lobby {0}.", Lobby.lobby_id);
@@ -469,16 +519,14 @@ namespace Dota2GameConnect.LobbyBot
                     lobby.members.Count(
                         m =>
                             m.team == DOTA_GC_TEAM.DOTA_GC_TEAM_BAD_GUYS ||
-                            m.team == DOTA_GC_TEAM.DOTA_GC_TEAM_GOOD_GUYS) >= 2) 
+                            m.team == DOTA_GC_TEAM.DOTA_GC_TEAM_GOOD_GUYS) >= 1) 
                     DotaGCHandler.LaunchLobby();
 
-#if TEST_IMPL
                 if (lobby.game_state == DOTA_GameState.DOTA_GAMERULES_STATE_POST_GAME)
                 {
                     log.Debug("Client has connected successfully and we've entered postgame.. Testing shutdown.");
                     Stop();
                 }
-#endif
             }
 #endif
 
