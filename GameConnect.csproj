@@ -78,7 +78,7 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\Dota2.GameClient\Dota2.GameClient.csproj">
+    <ProjectReference Include="..\..\Dota2.GameClient\Dota2.GameClient.csproj">
       <Project>{0c79ca20-80e5-42d1-b6d0-d3d319d0dd39}</Project>
       <Name>Dota2.GameClient</Name>
     </ProjectReference>
