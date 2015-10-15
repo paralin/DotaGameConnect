@@ -1,4 +1,4 @@
-﻿namespace Dota2GameConnect.LobbyBot.Enums
+﻿namespace Dota2.Samples.GameConnect.LobbyBot.Enums
 {
     /// <summary>
     /// Bot state

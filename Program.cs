@@ -1,13 +1,13 @@
 ﻿//#define HARDCODE_LOGIN
+
 using System;
 using System.Threading;
-using Dota2GameConnect.LobbyBot;
-using Dota2GameConnect.LobbyBot.Enums;
-using log4net;
+using Dota2.Samples.GameConnect.LobbyBot;
+using Dota2.Samples.GameConnect.LobbyBot.Enums;
 using log4net.Config;
 using SteamKit2;
 
-namespace Dota2GameConnect
+namespace Dota2.Samples.GameConnect
 {
     internal class Program
     {

@@ -2,26 +2,22 @@
 #define TEST_IMPL
 
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Dota2;
-using Dota2.Engine;
-using Dota2.Engine.Control;
-using Dota2.Engine.Game;
-using Dota2.Engine.Game.Data;
-using Dota2.Engine.Game.Entities.Dota;
-using Dota2.Engine.Session.State.Enums;
+using Dota2.GameClient.Engine;
+using Dota2.GameClient.Engine.Control;
+using Dota2.GameClient.Engine.Game;
+using Dota2.GameClient.Engine.Game.Entities.Dota;
+using Dota2.GameClient.Engine.Session.State.Enums;
 using Dota2.GC.Dota.Internal;
 using Dota2.GC.Internal;
-using Dota2GameConnect.LobbyBot.Enums;
-using Dota2GameConnect.Utils;
+using Dota2.Samples.GameConnect.LobbyBot.Enums;
+using Dota2.Samples.GameConnect.Utils;
 using log4net;
-using Stateless;
 using SteamKit2;
 using Timer = System.Timers.Timer;
 
-namespace Dota2GameConnect.LobbyBot
+namespace Dota2.Samples.GameConnect.LobbyBot
 {
     /// <summary>
     /// An instance of a DOTA 2 lobby/game bot

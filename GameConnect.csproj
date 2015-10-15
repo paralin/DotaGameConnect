@@ -7,9 +7,9 @@
     <ProjectGuid>{BF6C7A5E-D73C-4B86-B555-10B2C96939AA}</ProjectGuid>
     <OutputType>Exe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>Dota2GameConnect</RootNamespace>
-    <AssemblyName>Dota2GameConnect</AssemblyName>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <RootNamespace>Dota2.Samples.GameConnect</RootNamespace>
+    <AssemblyName>GameConnect</AssemblyName>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <TargetFrameworkProfile />

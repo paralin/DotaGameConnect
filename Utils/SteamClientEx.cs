@@ -1,7 +1,7 @@
 ﻿using System;
 using SteamKit2;
 
-namespace Dota2GameConnect.Utils
+namespace Dota2.Samples.GameConnect.Utils
 {
     public static class SteamClientEx
     {
